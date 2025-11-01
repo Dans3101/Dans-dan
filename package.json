@@ -1,7 +1,7 @@
 {
   "name": "dans-dan",
-  "version": "1.0.0",
-  "description": "Advanced WhatsApp bot by Dans — with autoview, status tracker, live connection display, and admin features.",
+  "version": "1.0.1",
+  "description": "Advanced multi-device WhatsApp bot by Dans — with autoview, live connection status, pairing code login, and admin tools.",
   "main": "index.js",
   "type": "module",
   "scripts": {
@@ -9,28 +9,37 @@
     "dev": "nodemon index.js"
   },
   "dependencies": {
-    "baileys": "latest",
-    "express": "^4.19.2",
-    "qrcode": "^1.5.4",
+    "@whiskeysockets/baileys": "7.0.0-rc.6",
+    "@hapi/boom": "^10.0.1",
+    "axios": "^1.7.2",
+    "chalk": "^5.3.0",
     "dotenv": "^16.4.5",
-    "pino": "^9.2.0"
+    "express": "^4.19.2",
+    "fs-extra": "^11.2.0",
+    "moment-timezone": "^0.5.45",
+    "node-fetch": "^3.3.2",
+    "pino": "^9.2.0",
+    "qrcode": "^1.5.4",
+    "sharp": "^0.33.2"
   },
   "devDependencies": {
+    "nodemon": "^3.1.0",
     "eslint": "^9.10.0",
     "typescript": "^5.4.0",
     "@typescript-eslint/parser": "^8.0.0"
   },
   "engines": {
-    "node": ">=18.x"
+    "node": "20.x"
   },
   "keywords": [
     "whatsapp-bot",
-    "baileys",
+    "baileys-md",
     "nodejs",
+    "dansbot",
     "render",
-    "dans",
     "autoview",
-    "status-tracker"
+    "status-tracker",
+    "pairing-code"
   ],
   "author": "Dans Code",
   "license": "MIT"
