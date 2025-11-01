@@ -1,44 +1,37 @@
 {
-  "name": "DansDans",
-  "version": "10.8.1",
-  "description": "DansDans latest multi-device WhatsApp bot",
+  "name": "dans-dan",
+  "version": "1.0.0",
+  "description": "Advanced WhatsApp bot by Dans — with autoview, status tracker, live connection display, and admin features.",
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "dev": "nodemon index.js"
   },
-  "keywords": ["DansDans", "whatsapp-bot", "whatsapp md bot"],
-  "author": "DansDans",
-  "license": "ISC",
   "dependencies": {
-    "@ffmpeg-installer/ffmpeg": "^1.1.0",
-    "@google/generative-ai": "^0.9.0",
-    "@hapi/boom": "^10.0.1",
-    "@whiskeysockets/baileys": "^6.7.16",
-    "axios": "^1.6.8",
-    "chalk": "^5.3.0",
-    "dotenv": "^16.4.5",
+    "baileys": "latest",
     "express": "^4.19.2",
-    "file-type": "^19.0.0",
-    "fs-extra": "^11.2.0",
-    "google-it": "^1.6.4",
-    "jimp": "^0.16.13",
-    "jpeg-js": "^0.4.4",
-    "jsqr": "^1.4.0",
-    "moment-timezone": "^0.5.45",
-    "node-cache": "^5.1.2",
-    "node-cron": "^3.0.3",
-    "node-fetch": "^3.3.2",
-    "pdfkit": "^0.15.0",
-    "pino": "^8.20.0",
-    "sequelize": "^6.37.5",
-    "sqlite3": "^5.1.7",
-    "qrcode": "^1.5.3",
-    "qrcode-terminal": "^0.12.0",
-    "uuid": "^9.0.1",
-    "yt-search": "^2.11.0"
+    "qrcode": "^1.5.4",
+    "dotenv": "^16.4.5",
+    "pino": "^9.2.0"
   },
   "devDependencies": {
-    "grunt": "^1.6.1"
-  }
+    "eslint": "^9.10.0",
+    "typescript": "^5.4.0",
+    "@typescript-eslint/parser": "^8.0.0"
+  },
+  "engines": {
+    "node": ">=18.x"
+  },
+  "keywords": [
+    "whatsapp-bot",
+    "baileys",
+    "nodejs",
+    "render",
+    "dans",
+    "autoview",
+    "status-tracker"
+  ],
+  "author": "Dans Code",
+  "license": "MIT"
 }
