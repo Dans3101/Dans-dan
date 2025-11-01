@@ -5,37 +5,33 @@ import {
   DisconnectReason
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import QRCode from 'qrcode';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-// Folders
+// === Folders ===
 const authFolder = './auth';
 const publicFolder = join(process.cwd(), 'public');
 if (!existsSync(authFolder)) mkdirSync(authFolder);
 if (!existsSync(publicFolder)) mkdirSync(publicFolder);
 
-// Config paths
+// === Config Files ===
 const blocklistPath = './blocklist.json';
 const featuresPath = './features.json';
 
-// Load blocklist
+// === Load Data ===
 let blocklist = existsSync(blocklistPath)
   ? JSON.parse(readFileSync(blocklistPath))
   : [];
 
-// Load feature toggles
 let features = existsSync(featuresPath)
   ? JSON.parse(readFileSync(featuresPath))
-  : {
-      autoview: true,
-      faketyping: true
-    };
+  : { autoview: true, faketyping: true };
 
-// Main function
+// === Main Function ===
 export async function startSession(sessionId, phoneNumber = null) {
   const { state, saveCreds } = await useMultiFileAuthState(join(authFolder, sessionId));
   const { version } = await fetchLatestBaileysVersion();
@@ -54,7 +50,7 @@ export async function startSession(sessionId, phoneNumber = null) {
   sock.ev.on('connection.update', async (update) => {
     const { connection, qr, lastDisconnect } = update;
 
-    // QR Method (only if no phone number provided)
+    // QR LOGIN (default)
     if (qr && !phoneNumber) {
       const qrPath = join(publicFolder, 'qr.png');
       QRCode.toFile(qrPath, qr, (err) => {
@@ -63,23 +59,13 @@ export async function startSession(sessionId, phoneNumber = null) {
       });
     }
 
-    // Pairing Code Method (if phone number provided)
-    if (phoneNumber && connection === 'connecting') {
-      try {
-        const code = await sock.requestPairingCode(phoneNumber);
-        const codePath = join(publicFolder, 'pairing.txt');
-        writeFileSync(codePath, code);
-        console.log(`🔗 Pairing code for ${phoneNumber}: ${code}`);
-      } catch (err) {
-        console.error('❌ Failed to generate pairing code:', err);
-      }
-    }
-
+    // CONNECTION OPENED
     if (connection === 'open') {
       console.log(`✅ WhatsApp session "${sessionId}" connected`);
       setupListeners(sock);
     }
 
+    // HANDLE CLOSE / RECONNECT
     if (connection === 'close') {
       const statusCode = lastDisconnect?.error instanceof Boom
         ? lastDisconnect.error.output.statusCode
@@ -92,9 +78,24 @@ export async function startSession(sessionId, phoneNumber = null) {
       }
     }
   });
+
+  // === Pairing Code Login ===
+  if (phoneNumber) {
+    try {
+      const pairingFile = join(publicFolder, 'pairing.txt');
+      if (existsSync(pairingFile)) unlinkSync(pairingFile); // clear old code
+
+      console.log(`📲 Generating pairing code for ${phoneNumber}...`);
+      const code = await sock.requestPairingCode(phoneNumber);
+      writeFileSync(pairingFile, code);
+      console.log(`🔗 Pairing code ready: ${code}`);
+    } catch (err) {
+      console.error('❌ Pairing code generation failed:', err);
+    }
+  }
 }
 
-// Handle incoming messages
+// === Incoming Messages ===
 async function handleIncomingMessage(sock, msg) {
   const sender = msg.key.remoteJid;
   const text =
@@ -106,11 +107,12 @@ async function handleIncomingMessage(sock, msg) {
 
   if (blocklist.includes(sender)) return;
 
-  // Commands
   const commands = {
     '.ping': '🏓 Pong!',
     '.alive': '✅ DansBot is alive!',
-    '.status': `📊 Status:\n${Object.entries(features).map(([k, v]) => `• ${k}: ${v ? '✅' : '❌'}`).join('\n')}`,
+    '.status': `📊 Status:\n${Object.entries(features)
+      .map(([k, v]) => `• ${k}: ${v ? '✅' : '❌'}`)
+      .join('\n')}`,
     '.menu': `📜 Menu:\n• .ping\n• .alive\n• .status\n• .menu\n• .shutdown\n• .broadcast <msg>\n• .block <number>\n• .unblock <number>\n• .toggle <feature>`
   };
 
@@ -120,23 +122,23 @@ async function handleIncomingMessage(sock, msg) {
   }
 
   if (command.startsWith('.') && !commands[command]) {
-    await sock.sendMessage(sender, {
-      text: `❓ Unknown command: ${command}\nType .menu to see available commands.`
-    }, { quoted: msg });
+    await sock.sendMessage(
+      sender,
+      { text: `❓ Unknown command: ${command}\nType .menu to see available commands.` },
+      { quoted: msg }
+    );
   }
 
-  // Auto-read messages
-  await sock.readMessages([msg.key]);
-
-  // Fake typing effect
   if (features.faketyping) {
     await sock.sendPresenceUpdate('composing', sender);
-    await new Promise(res => setTimeout(res, 2000));
+    await new Promise(res => setTimeout(res, 1500));
     await sock.sendPresenceUpdate('paused', sender);
   }
+
+  await sock.readMessages([msg.key]);
 }
 
-// Event listeners
+// === Listeners ===
 function setupListeners(sock) {
   sock.ev.on('messages.upsert', async ({ messages }) => {
     for (const msg of messages) {
@@ -144,7 +146,6 @@ function setupListeners(sock) {
     }
   });
 
-  // Keep bot online
   setInterval(() => {
     sock.sendPresenceUpdate('available');
     console.log('🟢 Bot is online');
