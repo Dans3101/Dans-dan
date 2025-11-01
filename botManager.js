@@ -12,6 +12,13 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+// === Global Status Tracker ===
+export let botStatus = {
+  connection: 'idle', // idle | connecting | connected | reconnecting | disconnected
+  lastUpdate: new Date().toISOString(),
+  phoneNumber: null
+};
+
 // === Folders ===
 const authFolder = './auth';
 const publicFolder = join(process.cwd(), 'public');
@@ -33,6 +40,10 @@ let features = existsSync(featuresPath)
 
 // === Main Function ===
 export async function startSession(sessionId, phoneNumber = null) {
+  botStatus.connection = 'connecting';
+  botStatus.lastUpdate = new Date().toISOString();
+  botStatus.phoneNumber = phoneNumber || null;
+
   const { state, saveCreds } = await useMultiFileAuthState(join(authFolder, sessionId));
   const { version } = await fetchLatestBaileysVersion();
 
@@ -59,21 +70,32 @@ export async function startSession(sessionId, phoneNumber = null) {
       });
     }
 
-    // CONNECTION OPENED
+    // CONNECTION STATES
+    if (connection === 'connecting') {
+      botStatus.connection = 'connecting';
+      botStatus.lastUpdate = new Date().toISOString();
+    }
+
     if (connection === 'open') {
+      botStatus.connection = 'connected';
+      botStatus.lastUpdate = new Date().toISOString();
       console.log(`✅ WhatsApp session "${sessionId}" connected`);
       setupListeners(sock);
     }
 
-    // HANDLE CLOSE / RECONNECT
     if (connection === 'close') {
       const statusCode = lastDisconnect?.error instanceof Boom
         ? lastDisconnect.error.output.statusCode
         : 'unknown';
       console.log(`❌ Disconnected. Code: ${statusCode}`);
 
+      botStatus.connection = 'disconnected';
+      botStatus.lastUpdate = new Date().toISOString();
+
       if (statusCode !== DisconnectReason.loggedOut) {
         console.log('🔁 Reconnecting...');
+        botStatus.connection = 'reconnecting';
+        botStatus.lastUpdate = new Date().toISOString();
         startSession(sessionId, phoneNumber);
       }
     }
