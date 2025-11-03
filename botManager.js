@@ -1,196 +1,118 @@
 // -----------------------------------------------------------------------------
-// 📱 DansDan WhatsApp Bot — Baileys v7+ Compatible
+// 📱 DansBot WhatsApp Manager (Fixed + Stable + Live Tracker)
 // -----------------------------------------------------------------------------
 
-import {
-  makeWASocket,
+import makeWASocket, {
+  DisconnectReason,
   useMultiFileAuthState,
-  fetchLatestBaileysVersion,
-  DisconnectReason
-} from "@whiskeysockets/baileys";
-import { Boom } from "@hapi/boom";
-import fs from "fs";
-import path from "path";
-import QRCode from "qrcode";
-import dotenv from "dotenv";
+  fetchLatestBaileysVersion
+} from '@whiskeysockets/baileys';
+import P from 'pino';
+import qrcode from 'qrcode';
+import fs from 'fs';
+import path from 'path';
+import { Boom } from '@hapi/boom';
 
-dotenv.config();
-
-// === Global Bot Status ===
-export let botStatus = {
-  connection: "idle", // idle | connecting | connected | disconnected | reconnecting
+// --- Global Bot Status Object ---
+export const botStatus = {
+  connection: 'idle',
   lastUpdate: new Date().toISOString(),
-  phoneNumber: null
+  phoneNumber: '',
+  qrGenerated: false
 };
 
-// === Directories ===
-const __dirname = process.cwd();
-const authFolder = path.join(__dirname, "auth");
-const publicFolder = path.join(__dirname, "public");
-if (!fs.existsSync(authFolder)) fs.mkdirSync(authFolder);
-if (!fs.existsSync(publicFolder)) fs.mkdirSync(publicFolder);
+// --- Utility Paths ---
+const publicPath = path.join(process.cwd(), 'public');
+const qrPath = path.join(publicPath, 'qr.png');
+const pairingFile = path.join(publicPath, 'pairing.txt');
 
-// === Config Files ===
-const blocklistPath = path.join(__dirname, "blocklist.json");
-const featuresPath = path.join(__dirname, "features.json");
+if (!fs.existsSync(publicPath)) fs.mkdirSync(publicPath);
 
-// === Load Data ===
-let blocklist = fs.existsSync(blocklistPath)
-  ? JSON.parse(fs.readFileSync(blocklistPath))
-  : [];
+// --- Core Bot Function ---
+export async function startSession(sessionName = 'main', phoneNumber = '') {
+  try {
+    const { state, saveCreds } = await useMultiFileAuthState(`./auth/${sessionName}`);
+    const { version } = await fetchLatestBaileysVersion();
 
-let features = fs.existsSync(featuresPath)
-  ? JSON.parse(fs.readFileSync(featuresPath))
-  : { autoview: true, faketyping: true };
+    botStatus.connection = 'connecting';
+    botStatus.lastUpdate = new Date().toISOString();
+    botStatus.phoneNumber = phoneNumber;
 
-// ============================================================================
-// 🟢 START SESSION
-// ============================================================================
-export async function startSession(sessionId, phoneNumber = null) {
-  botStatus.connection = "connecting";
-  botStatus.lastUpdate = new Date().toISOString();
-  botStatus.phoneNumber = phoneNumber || null;
+    console.log('🚀 Starting WhatsApp session...');
+    console.log('📡 Using Baileys version:', version.join('.'));
 
-  const { state, saveCreds } = await useMultiFileAuthState(path.join(authFolder, sessionId));
-  const { version } = await fetchLatestBaileysVersion();
+    const sock = makeWASocket({
+      version,
+      logger: P({ level: 'silent' }),
+      printQRInTerminal: true,
+      auth: state,
+      browser: ['DansBot', 'Chrome', '4.0']
+    });
 
-  console.log(`📦 Baileys version: ${version.join(".")}`);
+    // --- Generate QR code when needed ---
+    sock.ev.on('connection.update', async (update) => {
+      const { connection, lastDisconnect, qr } = update;
 
-  const sock = makeWASocket({
-    version,
-    auth: state,
-    printQRInTerminal: false,
-    browser: ["DansBot", "Chrome", "122"]
-  });
-
-  sock.ev.on("creds.update", saveCreds);
-
-  // === CONNECTION HANDLER ===
-  sock.ev.on("connection.update", async (update) => {
-    const { connection, qr, lastDisconnect } = update;
-
-    // Show QR for manual login
-    if (qr && !phoneNumber) {
-      const qrPath = path.join(publicFolder, "qr.png");
-      QRCode.toFile(qrPath, qr, (err) => {
-        if (err) console.error("❌ Failed to save QR code:", err);
-        else console.log(`✅ QR code saved at ${qrPath}`);
-      });
-    }
-
-    // Handle connection state changes
-    if (connection === "connecting") {
-      botStatus.connection = "connecting";
-      botStatus.lastUpdate = new Date().toISOString();
-    }
-
-    if (connection === "open") {
-      botStatus.connection = "connected";
-      botStatus.lastUpdate = new Date().toISOString();
-      console.log(`✅ WhatsApp session "${sessionId}" connected`);
-      setupListeners(sock);
-    }
-
-    if (connection === "close") {
-      const reason =
-        lastDisconnect?.error instanceof Boom
-          ? lastDisconnect.error.output.statusCode
-          : "unknown";
-
-      console.log(`❌ Disconnected. Reason code: ${reason}`);
-      botStatus.connection = "disconnected";
-      botStatus.lastUpdate = new Date().toISOString();
-
-      if (reason !== DisconnectReason.loggedOut) {
-        console.log("🔁 Reconnecting...");
-        botStatus.connection = "reconnecting";
+      if (qr) {
+        botStatus.qrGenerated = true;
+        botStatus.connection = 'connecting';
         botStatus.lastUpdate = new Date().toISOString();
-        startSession(sessionId, phoneNumber);
+        await qrcode.toFile(qrPath, qr);
+        console.log('✅ QR code updated — Scan it in WhatsApp Web');
       }
-    }
-  });
 
-  // === PAIRING CODE LOGIN ===
-  if (phoneNumber) {
-    try {
-      const pairingFile = path.join(publicFolder, "pairing.txt");
-      if (fs.existsSync(pairingFile)) fs.unlinkSync(pairingFile);
+      if (connection === 'open') {
+        botStatus.connection = 'connected';
+        botStatus.lastUpdate = new Date().toISOString();
+        console.log('🟢 WhatsApp Connected!');
+        if (fs.existsSync(qrPath)) fs.unlinkSync(qrPath);
+      }
 
-      console.log(`📲 Requesting pairing code for ${phoneNumber}...`);
+      if (connection === 'close') {
+        const reason = new Boom(lastDisconnect?.error)?.output?.statusCode;
+        if (reason === DisconnectReason.loggedOut) {
+          console.log('❌ Session logged out. Clearing credentials.');
+          fs.rmSync(`./auth/${sessionName}`, { recursive: true, force: true });
+          botStatus.connection = 'disconnected';
+        } else {
+          console.log('🔁 Reconnecting...');
+          botStatus.connection = 'reconnecting';
+          startSession(sessionName);
+        }
+        botStatus.lastUpdate = new Date().toISOString();
+      }
+    });
+
+    // --- Save credentials whenever updated ---
+    sock.ev.on('creds.update', saveCreds);
+
+    // --- Optional message event for testing ---
+    sock.ev.on('messages.upsert', async (msg) => {
+      try {
+        const message = msg.messages[0];
+        if (!message.message) return;
+
+        const from = message.key.remoteJid;
+        const text = message.message.conversation || message.message.extendedTextMessage?.text;
+
+        if (text && text.toLowerCase() === 'ping') {
+          await sock.sendMessage(from, { text: 'Pong! ✅ Bot is active.' });
+        }
+      } catch (err) {
+        console.error('Error handling message:', err);
+      }
+    });
+
+    // --- Pairing Code Login ---
+    if (phoneNumber && !state.creds.registered) {
+      console.log('📱 Requesting pairing code for:', phoneNumber);
       const code = await sock.requestPairingCode(phoneNumber);
-      fs.writeFileSync(pairingFile, code);
-      console.log(`🔗 Pairing code generated: ${code}`);
-    } catch (err) {
-      console.error("❌ Failed to generate pairing code:", err);
+      fs.writeFileSync(pairingFile, code, 'utf8');
+      console.log('✅ Pairing code generated:', code);
     }
+  } catch (err) {
+    console.error('💥 Fatal error in startSession:', err);
+    botStatus.connection = 'error';
+    botStatus.lastUpdate = new Date().toISOString();
   }
-}
-
-// ============================================================================
-// 💬 MESSAGE HANDLER
-// ============================================================================
-async function handleIncomingMessage(sock, msg) {
-  const sender = msg.key.remoteJid;
-  const text =
-    msg.message?.conversation ||
-    msg.message?.extendedTextMessage?.text ||
-    msg.message?.imageMessage?.caption ||
-    "";
-  const command = text.trim().toLowerCase();
-
-  if (blocklist.includes(sender)) return;
-
-  const commands = {
-    ".ping": "🏓 Pong!",
-    ".alive": "✅ DansBot is alive and running!",
-    ".status": `📊 Status:\n${Object.entries(features)
-      .map(([k, v]) => `• ${k}: ${v ? "✅" : "❌"}`)
-      .join("\n")}`,
-    ".menu":
-      "📜 Menu:\n• .ping\n• .alive\n• .status\n• .menu\n• .block <number>\n• .unblock <number>\n• .toggle <feature>"
-  };
-
-  if (commands[command]) {
-    await sock.sendMessage(sender, { text: commands[command] }, { quoted: msg });
-    return;
-  }
-
-  if (command.startsWith(".") && !commands[command]) {
-    await sock.sendMessage(
-      sender,
-      {
-        text: `❓ Unknown command: ${command}\nType .menu to see available commands.`
-      },
-      { quoted: msg }
-    );
-  }
-
-  // Fake typing (optional)
-  if (features.faketyping) {
-    await sock.sendPresenceUpdate("composing", sender);
-    await new Promise((r) => setTimeout(r, 1200));
-    await sock.sendPresenceUpdate("paused", sender);
-  }
-
-  // Auto-view
-  if (features.autoview) {
-    await sock.readMessages([msg.key]);
-  }
-}
-
-// ============================================================================
-// 📡 SETUP LISTENERS
-// ============================================================================
-function setupListeners(sock) {
-  sock.ev.on("messages.upsert", async ({ messages }) => {
-    for (const msg of messages) {
-      if (!msg.key.fromMe) await handleIncomingMessage(sock, msg);
-    }
-  });
-
-  // Keep connection alive
-  setInterval(() => {
-    sock.sendPresenceUpdate("available");
-    console.log("🟢 Bot heartbeat: still online");
-  }, 30000);
 }
